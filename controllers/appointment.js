@@ -32,14 +32,18 @@ exports.bookAppointment = async (req, res) => {
 };
 exports.updateMedicalRecord = async (req, res) => {
   try {
-    const { appointmentId } = req.params;
-    const { diagnosis, doctorNotes, medications, markComplete } = req.body;
+    const { appointmentId }              = req.params;
+    const { diagnosis, doctorNotes,
+            medications, markComplete }   = req.body;
 
+    /* ── 1. fetch appointment + existing medical record ────────────── */
     const appt = await Appointment.findByPk(appointmentId, {
-      include: MedicalRecord,
+      include: [{ model: MedicalRecord }]   // alias not needed, default is MedicalRecord
     });
-    if (!appt) return res.status(404).json({ error: "Appointment not found" });
+    if (!appt)
+      return res.status(404).json({ error: "Appointment not found" });
 
+    /* ── 2. upsert medical record ──────────────────────────────────── */
     if (appt.MedicalRecord) {
       await appt.MedicalRecord.update({ diagnosis, doctorNotes, medications });
     } else {
@@ -51,15 +55,22 @@ exports.updateMedicalRecord = async (req, res) => {
       });
     }
 
+    /* ── 3. optionally set appointment status complete ─────────────── */
     if (markComplete) appt.status = "complete";
     await appt.save();
 
-    res.json({ success: true, data: appt });
+    /* ── 4. return fresh record & appointment info ─────────────────── */
+    const updated = await Appointment.findByPk(appointmentId, {
+      include: [{ model: MedicalRecord }],
+    });
+
+    res.json({ success: true, data: updated });
   } catch (err) {
-    console.error(err);
+    console.error("updateMedicalRecord error:", err);
     res.status(500).json({ error: "Failed to update medical record" });
   }
 };
+
 
 exports.cancelAppointment = async (req, res) => {
   try {
@@ -115,24 +126,6 @@ exports.getAllAppointments = async (req, res) => {
   }
 };
 
-exports.getUserAppointments = async (req, res) => {
-  try {
-    const userId = req.user.id;
-
-    const appointments = await Appointment.findAll({
-      where: { userId },
-      include: [
-        { model: Doctor, attributes: ["name", "image", "fees", "speciality"] },
-      ],
-      order: [["date", "ASC"]],
-    });
-
-    res.status(200).json({ success: true, data: appointments });
-  } catch (error) {
-    console.error("Fetch user appointments error:", error);
-    res.status(500).json({ error: "Failed to fetch user appointments" });
-  }
-};
 exports.cancelAppointment = async (req, res) => {
   try {
     const { appointmentId } = req.params;

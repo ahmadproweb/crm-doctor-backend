@@ -1,6 +1,6 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const { Patients } = require("../models");
+const { Patient } = require("../models");
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -12,12 +12,12 @@ exports.register = async (req, res) => {
   const { fullName, email, password } = req.body;
 
   try {
-    const existingPatient = await Patients.findOne({ where: { email } });
+    const existingPatient = await Patient.findOne({ where: { email } });
     if (existingPatient)
       return res.status(400).json({ error: "Email already registered" });
 
     const hashed = await bcrypt.hash(password, 10);
-    const patient = await Patients.create({
+    const patient = await Patient.create({
       fullName,
       email,
       password: hashed,
@@ -38,7 +38,7 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   const { email, password } = req.body;
   try {
-    const patient = await Patients.findOne({ where: { email } });
+    const patient = await Patient.findOne({ where: { email } });
     if (!patient) return res.status(404).json({ error: "patient not found" });
 
     const match = await bcrypt.compare(password, patient.password);
@@ -62,8 +62,6 @@ exports.login = async (req, res) => {
 
 exports.checkAuth = async (req, res) => {
   try {
-    // console.log("checkAuth called - user:", req.user);
-
     const patient = req.patient;
     res.json({ patient });
   } catch (err) {
@@ -77,7 +75,7 @@ exports.updateProfile = async (req, res) => {
   const idPatient = req.patient.id;
 
   try {
-    const patient = await Patients.findByPk(idPatient);
+    const patient = await Patient.findByPk(idPatient);
     if (!patient) return res.status(404).json({ error: "User not found" });
 
     if (req.file) {

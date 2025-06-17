@@ -28,11 +28,7 @@ router.put(
 router.put("/:appointmentId/cancel", appointmentController.cancelAppointment);
 
 
-router.get(
-  "/auth/get",
-  protect,
-  appointmentController.getUserAppointments
-);
+
 router.delete(
   "/:appointmentId/auth/delete/cancel",
   protect,

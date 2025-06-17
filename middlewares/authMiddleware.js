@@ -1,33 +1,70 @@
-const jwt = require('jsonwebtoken');
-const { Patients } = require('../models');
-
+const jwt = require("jsonwebtoken");
+const {
+  Patient,
+  Analysis,
+  Appointment,
+  MedicalRecord,
+  Service,
+  Doctor,
+} = require("../models");
 
 exports.protect = async (req, res, next) => {
   const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer "))
+    return res.status(401).json({ error: "No token provided" });
 
-  if (!authHeader || !authHeader.startsWith('Bearer '))
-    return res.status(401).json({ error: 'No token provided' });
-
-  const token = authHeader.split(' ')[1];
+  const token = authHeader.split(" ")[1];
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    // console.log("Decoded token:", decoded);
+    console.log("Decoded token:", decoded);
 
-    const patient = await Patients.findByPk(decoded.id, {
-      attributes: ['id', 'fullName', 'email' , 'password' , 'phone' , 'gender' , 'birthday'  , 'image'  ],
+    // 🗄️  Pull patient + analysis + appointments (+ medical record)
+    const patient = await Patient.findByPk(decoded.id, {
+      attributes: [
+        "id",
+        "fullName",
+        "email",
+        "phone",
+        "gender",
+        "birthday",
+        "image",
+      ],
+      include: [
+        // ⇢ Analyses performed for this patient
+        {
+          model: Analysis,
+          attributes: ["id", "analysisName", "image"],
+        },
+        // ⇢ Their appointments with nested doctor, service & medical record
+        {
+          model: Appointment,
+          attributes: ["id", "date", "time", "status", "payment"],
+          include: [
+            {
+              model: Service,
+              attributes: ["id", "name", "fee"],
+            },
+            {
+              model: Doctor,
+              attributes: ["id", "fullName", "speciality"],
+            },
+            {
+              model: MedicalRecord,
+              attributes: ["id", "diagnosis", "doctorNotes", "medications"],
+            },
+          ],
+        },
+      ],
+      order: [[{ model: Appointment }, "date", "DESC"]], // latest first
     });
 
-    if (!patient) {
-      return res.status(401).json({ error: 'User not found' });
-    }
+    if (!patient) return res.status(401).json({ error: "User not found" });
 
     req.patient = patient;
-    // console.log("Authenticated user:", req.user); 
-
     next();
   } catch (err) {
-    // console.error("Token verification failed:", err.message); 
-    return res.status(401).json({ error: 'Invalid token' });
+    console.error("Token verification failed:", err.message);
+    return res.status(401).json({ error: "Invalid token" });
   }
 };

@@ -1,7 +1,13 @@
 const db = require("../models");
 const jwt = require("jsonwebtoken");
+const { Patients, Appointment } = db;
 const bcrypt = require("bcrypt");
+const { Sequelize } = require("../models");
 
+const DoctorFeedback = db.DoctorFeedback;
+const Feedback = db.Feedback;
+const fs = require("fs");
+const path = require("path");
 const {
   generateTokenAdmin,
   generateTokenDoctor,
@@ -138,16 +144,236 @@ exports.createDoctor = async (req, res) => {
   }
 };
 
-exports.getAllDoctors = async (req, res) => {
+function removeImage(fullUrl) {
+  if (!fullUrl) return;
+
+  try {
+    const fileName = path.basename(fullUrl);
+    const filePath = path.join(__dirname, "..", "uploads", fileName);
+
+    console.log("🗑 Deleting image:", filePath);
+
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log("✅ Image deleted:", fileName);
+    } else {
+      console.warn("⚠️ Image not found on disk:", fileName);
+    }
+  } catch (e) {
+    console.error("removeImage error:", e.message);
+  }
+}
+
+exports.updateDoctor = async (req, res) => {
+  const t = await db.sequelize.transaction();
+  try {
+    const { id } = req.params;
+    const {
+      fullName,
+      email,
+      password,
+      speciality,
+      experience,
+      about,
+      scheduleDate,
+      scheduleTime,
+      services,
+    } = req.body;
+
+    const doctor = await Doctor.findByPk(id);
+    if (!doctor) return res.status(404).json({ message: "Doctor not found" });
+
+    if (email && email !== doctor.email) {
+      const exists = await Doctor.findOne({ where: { email } });
+      if (exists) {
+        return res.status(400).json({ message: "Email already exists" });
+      }
+    }
+
+    const hash = password ? await bcrypt.hash(password, 10) : doctor.password;
+
+    if (req.file) {
+      removeImage(doctor.image);
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      doctor.image = `${baseUrl}/uploads/${req.file.filename}`;
+    }
+
+    await doctor.update(
+      {
+        fullName: fullName ?? doctor.fullName,
+        email: email ?? doctor.email,
+        password: hash,
+        speciality: speciality ?? doctor.speciality,
+        experience: experience ?? doctor.experience,
+        about: about ?? doctor.about,
+        scheduleDate: scheduleDate ?? doctor.scheduleDate,
+        scheduleTime: scheduleTime ?? doctor.scheduleTime,
+      },
+      { transaction: t }
+    );
+
+    let updatedServices = [];
+    if (services) {
+      let parsed;
+      try {
+        parsed = JSON.parse(services);
+      } catch (e) {
+        return res.status(400).json({
+          message: "Invalid JSON in services",
+          error: e.message,
+        });
+      }
+
+      const oldLinks = await DoctorService.findAll({
+        where: { idDoctor: doctor.id },
+        transaction: t,
+      });
+      const oldServiceIds = oldLinks.map((l) => l.idService);
+
+      await DoctorService.destroy({
+        where: { idDoctor: doctor.id },
+        transaction: t,
+      });
+
+      if (oldServiceIds.length) {
+        await Service.destroy({ where: { id: oldServiceIds }, transaction: t });
+      }
+
+      for (const s of parsed) {
+        const newSrv = await Service.create(
+          { name: s.name, fee: s.fee },
+          { transaction: t }
+        );
+        await DoctorService.create(
+          { idDoctor: doctor.id, idService: newSrv.id },
+          { transaction: t }
+        );
+        updatedServices.push(newSrv);
+      }
+    }
+
+    await t.commit();
+    return res.status(200).json({
+      message: "Doctor updated",
+      doctor,
+      services: updatedServices,
+    });
+  } catch (err) {
+    await t.rollback();
+    console.error("Update doctor error:", err);
+    return res
+      .status(500)
+      .json({ message: "Something went wrong", error: err.message });
+  }
+};
+
+// controller/doctorController.js
+exports.deleteDoctor = async (req, res) => {
+  const t = await db.sequelize.transaction();
+  try {
+    const { id } = req.params;
+
+    /* ---------- Doctor exist? ---------- */
+    const doctor = await Doctor.findByPk(id);
+    if (!doctor) return res.status(404).json({ message: "Doctor not found" });
+
+    /* ---------- 1. Image delete ---------- */
+    removeImage(doctor.image);
+
+    /* ---------- 2. Services clean‑up ---------- */
+    const serviceLinks = await DoctorService.findAll({
+      where: { idDoctor: id },
+      transaction: t,
+    });
+    const serviceIds = serviceLinks.map((l) => l.idService);
+
+    await DoctorService.destroy({
+      where: { idDoctor: id },
+      transaction: t,
+    });
+    if (serviceIds.length) {
+      await Service.destroy({
+        where: { id: serviceIds },
+        transaction: t,
+      });
+    }
+
+    /* ---------- 3. Reviews clean‑up ---------- */
+    const reviewLinks = await DoctorFeedback.findAll({
+      where: { idDoctor: id },
+      transaction: t,
+    });
+    const feedbackIds = reviewLinks.map((l) => l.idFeedback);
+
+    await DoctorFeedback.destroy({
+      where: { idDoctor: id },
+      transaction: t,
+    });
+    if (feedbackIds.length) {
+      await Feedback.destroy({
+        where: { id: feedbackIds },
+        transaction: t,
+      });
+    }
+
+    /* ---------- 4. Doctor delete ---------- */
+    await doctor.destroy({ transaction: t });
+
+    await t.commit();
+    return res.status(200).json({
+      message: "Doctor, services & reviews deleted",
+    });
+  } catch (err) {
+    await t.rollback();
+    console.error("Delete doctor error:", err);
+    return res.status(500).json({
+      message: "Something went wrong",
+      error: err.message,
+    });
+  }
+};
+
+exports.getAllDoctors = async (_req, res) => {
   try {
     const doctors = await Doctor.findAll({
-      attributes: { exclude: ["password"] },
-      order: [["createdAt", "DESC"]],
+      attributes: {
+        exclude: ["password"],
+        include: [
+          [
+            Sequelize.fn(
+              "COALESCE",
+              Sequelize.fn("AVG", Sequelize.col("Feedbacks.stars")),
+              0
+            ),
+            "avgRating",
+          ],
+        ],
+      },
+
+      include: [
+        // services via M:N relation
+        {
+          model: Service,
+          as: "services",
+          attributes: ["id", "name", "fee"],
+          through: { attributes: [] }, // hide join table
+        },
+        // feedbacks
+        {
+          model: Feedback,
+          attributes: ["id", "message", "stars"],
+          through: { attributes: [] },
+        },
+      ],
+
+      group: ["Doctor.id", "services.id", "Feedbacks.id"],
+
+      order: [[Sequelize.literal('"avgRating"'), "DESC"]],
     });
 
-    res.status(200).json({ doctors });
+    res.json({ doctors });
   } catch (err) {
-    console.error("Error fetching doctors:", err.message);
+    console.error("getAllDoctors error:", err);
     res.status(500).json({ message: "Failed to fetch doctors" });
   }
 };
@@ -188,16 +414,6 @@ exports.checkSession = async (req, res) => {
     if (decoded.role === "doctor") {
       const doctor = await Doctor.findByPk(decoded.id, {
         attributes: { exclude: ["password"] },
-        include: [
-          {
-            model: db.Feedback,
-            attributes: ["id", "message", "stars"],
-            include: {
-              model: db.Patients,
-              attributes: ["id", "fullName"],
-            },
-          },
-        ],
       });
       return res.status(200).json({
         isAuthenticated: true,
@@ -210,5 +426,68 @@ exports.checkSession = async (req, res) => {
   } catch (error) {
     console.log("JWT verify error:", error.message);
     return res.status(401).json({ isAuthenticated: false });
+  }
+};
+
+exports.getAllPatients = async (req, res) => {
+  try {
+    const isDoctor = !!req.doctor;
+    const doctorId = req.doctor?.id;
+
+    const patients = await Patients.findAll({
+      attributes: { exclude: ["password"] },
+      distinct: true,
+      order: [["createdAt", "DESC"]],
+      include: [
+        {
+          model: Appointment,
+          required: isDoctor,
+          where: isDoctor ? { idDoctor: doctorId } : undefined,
+          attributes: ["date", "time"],
+          include: [
+            {
+              model: Service,
+              attributes: ["name", "fee"],
+            },
+            {
+              model: Doctor,
+              attributes: ["id", "fullName"],
+            },
+            {
+              model: db.MedicalRecord,
+              attributes: ["diagnosis", "doctorNotes", "medications"],
+            },
+          ],
+        },
+        {
+          model: Feedback,
+          required: false,
+          attributes: ["message", "stars"],
+          include: [
+            {
+              model: DoctorFeedback,
+              required: isDoctor,
+              where: isDoctor ? { idDoctor: doctorId } : undefined,
+              attributes: [],
+              include: [
+                {
+                  model: Doctor,
+                  attributes: ["id", "fullName"],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          model: db.Analysis,
+          attributes: ["analysisName", "image"],
+        },
+      ],
+    });
+
+    res.json(patients);
+  } catch (e) {
+    console.error("getAllPatients error:", e);
+    res.status(500).json({ message: "Something went wrong" });
   }
 };

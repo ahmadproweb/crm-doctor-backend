@@ -1,4 +1,3 @@
-// models/medicalRecord.js
 module.exports = (sequelize, DataTypes) =>
   sequelize.define(
     "MedicalRecord",
@@ -9,7 +8,7 @@ module.exports = (sequelize, DataTypes) =>
       medications  : DataTypes.TEXT,
     },
     {
-      tableName: "MedicalRecords", // 👈 force plural
+      tableName: "MedicalRecords", 
       freezeTableName: true,
     }
   );

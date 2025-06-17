@@ -1,15 +1,14 @@
 const { Sequelize } = require("sequelize");
-const Patients = require("./patient");
-const DoctorModel = require("./doctor");
-const AdminModel = require("./admin");
-const AppointmentModel = require("./appointment");
-const MedicalRecordModel = require("./medicalRecord"); // ✅ ADD
-
-const FeedbackModel = require("./feedback");
+const PatientModel        = require("./patient");
+const DoctorModel         = require("./doctor");
+const AdminModel          = require("./admin");
+const AppointmentModel    = require("./appointment");
+const MedicalRecordModel  = require("./medicalRecord");
+const FeedbackModel       = require("./feedback");
 const DoctorFeedbackModel = require("./doctorFeedback");
-const ServiceModel = require("./service");
-const DoctorServiceModel = require("./doctorService");
-const AnalysisModel = require("./analysis");
+const ServiceModel        = require("./service");
+const DoctorServiceModel  = require("./doctorService");
+const AnalysisModel       = require("./analysis");
 
 require("dotenv").config();
 
@@ -18,8 +17,8 @@ const sequelize = new Sequelize(
   process.env.DB_USER,
   process.env.DB_PASSWORD,
   {
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT,
+    host   : process.env.DB_HOST,
+    port   : process.env.DB_PORT,
     dialect: "postgres",
   }
 );
@@ -28,40 +27,69 @@ const db = {};
 db.Sequelize = Sequelize;
 db.sequelize = sequelize;
 
-db.Doctor = DoctorModel(sequelize, Sequelize);
-db.Feedback = FeedbackModel(sequelize, Sequelize);
+// Models
+db.Doctor         = DoctorModel(sequelize, Sequelize);
+db.Feedback       = FeedbackModel(sequelize, Sequelize);
 db.DoctorFeedback = DoctorFeedbackModel(sequelize, Sequelize);
-db.Service = ServiceModel(sequelize, Sequelize);
-db.DoctorService = DoctorServiceModel(sequelize, Sequelize);
-db.Patients = Patients(sequelize, Sequelize);
-db.Admin = AdminModel(sequelize, Sequelize);
-db.Appointment = AppointmentModel(sequelize, Sequelize);
-db.MedicalRecord = MedicalRecordModel(sequelize, Sequelize); 
-db.Analysis = AnalysisModel(sequelize, Sequelize); 
+db.Service        = ServiceModel(sequelize, Sequelize);
+db.DoctorService  = DoctorServiceModel(sequelize, Sequelize);
+db.Patient        = PatientModel(sequelize, Sequelize);
+db.Admin          = AdminModel(sequelize, Sequelize);
+db.Appointment    = AppointmentModel(sequelize, Sequelize);
+db.MedicalRecord  = MedicalRecordModel(sequelize, Sequelize);
+db.Analysis       = AnalysisModel(sequelize, Sequelize);
 
-// Associations
-db.Patients.hasMany(db.Feedback, { foreignKey: "idPatient" });
-db.Feedback.belongsTo(db.Patients, { foreignKey: "idPatient" });
+// ─────────────────── Associations ───────────────────
 
-db.Doctor.hasMany(db.DoctorFeedback, { foreignKey: "idDoctor" });
-db.DoctorFeedback.belongsTo(db.Doctor, { foreignKey: "idDoctor" });
+// Patient ↔ Feedback
+db.Patient.hasMany(db.Feedback, { foreignKey: "idPatient" });
+db.Feedback.belongsTo(db.Patient, { foreignKey: "idPatient" });
 
-db.Feedback.hasOne(db.DoctorFeedback, { foreignKey: "idFeedback" });
-db.DoctorFeedback.belongsTo(db.Feedback, { foreignKey: "idFeedback" });
+// Doctor ↔ DoctorFeedback (1:M) + aliases
+db.Doctor.hasMany(db.DoctorFeedback, { foreignKey: "idDoctor", as: "doctorFeedbacks" });
+db.DoctorFeedback.belongsTo(db.Doctor, { foreignKey: "idDoctor", as: "doctor" });
+db.Feedback.hasOne(db.DoctorFeedback, { foreignKey: "idFeedback", as: "feedbackJoin" });
+db.DoctorFeedback.belongsTo(db.Feedback, { foreignKey: "idFeedback", as: "feedback" });
 
-db.Doctor.hasMany(db.DoctorService, { foreignKey: "idDoctor" });
-db.Service.hasMany(db.DoctorService, { foreignKey: "idService" });
-db.DoctorService.belongsTo(db.Doctor, { foreignKey: "idDoctor" });
-db.DoctorService.belongsTo(db.Service, { foreignKey: "idService" });
+// Doctor ↔ Feedback (M:N) through DoctorFeedback
+db.Doctor.belongsToMany(db.Feedback, {
+  through    : db.DoctorFeedback,
+  foreignKey : "idDoctor",
+  otherKey   : "idFeedback",
+});
+db.Feedback.belongsToMany(db.Doctor, {
+  through    : db.DoctorFeedback,
+  foreignKey : "idFeedback",
+  otherKey   : "idDoctor",
+});
 
-db.Appointment.belongsTo(db.Patients, { foreignKey: "idPatient" });
-db.Appointment.belongsTo(db.Doctor, { foreignKey: "idDoctor" });
+// Doctor ↔ Service (M:N) through DoctorService  ✅ NEW
+db.Doctor.belongsToMany(db.Service, {
+  through    : db.DoctorService,
+  foreignKey : "idDoctor",
+  otherKey   : "idService",
+  as         : "services",
+});
+db.Service.belongsToMany(db.Doctor, {
+  through    : db.DoctorService,
+  foreignKey : "idService",
+  otherKey   : "idDoctor",
+});
 
+// Appointment relations
+db.Doctor.hasMany(db.Appointment,  { foreignKey: "idDoctor" });
+db.Patient.hasMany(db.Appointment, { foreignKey: "idPatient" });
+db.Appointment.belongsTo(db.Doctor,  { foreignKey: "idDoctor"  });
+db.Appointment.belongsTo(db.Patient, { foreignKey: "idPatient" });
+db.Service.hasMany(db.Appointment,   { foreignKey: "idService" });
+db.Appointment.belongsTo(db.Service, { foreignKey: "idService" });
 
-db.Appointment.hasOne(db.MedicalRecord, { foreignKey: "idAppointment" });
-db.MedicalRecord.belongsTo(db.Appointment, { foreignKey: "idAppointment" });
+// MedicalRecord 1:1
+db.Appointment.hasOne(db.MedicalRecord,   { foreignKey: "idAppointment" });
+db.MedicalRecord.belongsTo(db.Appointment,{ foreignKey: "idAppointment" });
 
-db.Patients.hasMany(db.Analysis, { foreignKey: "idPatient" });
-db.Analysis.belongsTo(db.Patients, { foreignKey: "idPatient" });
+// Analysis 1:M
+db.Patient.hasMany(db.Analysis, { foreignKey: "idPatient" });
+db.Analysis.belongsTo(db.Patient,{ foreignKey: "idPatient" });
 
 module.exports = db;
