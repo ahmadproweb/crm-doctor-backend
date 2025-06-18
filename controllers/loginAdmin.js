@@ -1,6 +1,6 @@
 const db = require("../models");
 const jwt = require("jsonwebtoken");
-const { Patients, Appointment } = db;
+const { Patient , Appointment } = db;
 const bcrypt = require("bcrypt");
 const { Sequelize } = require("../models");
 
@@ -79,7 +79,10 @@ exports.createDoctor = async (req, res) => {
       const baseUrl = `${req.protocol}://${req.get("host")}`;
       imagePath = `${baseUrl}/uploads/${req.file.filename}`;
     }
-
+const parsedDate =
+  scheduleDate && scheduleDate !== "Invalid date" ? scheduleDate : null;
+const parsedTime =
+  scheduleTime && scheduleTime !== "Invalid date" ? scheduleTime : null;
     const doctor = await Doctor.create(
       {
         fullName,
@@ -89,8 +92,8 @@ exports.createDoctor = async (req, res) => {
         experience,
         about,
         image: imagePath,
-        scheduleDate,
-        scheduleTime,
+        scheduleDate: parsedDate,
+    scheduleTime: parsedTime,
       },
       { transaction: t }
     );
@@ -434,7 +437,7 @@ exports.getAllPatients = async (req, res) => {
     const isDoctor = !!req.doctor;
     const doctorId = req.doctor?.id;
 
-    const patients = await Patients.findAll({
+    const patients = await Patient.findAll({
       attributes: { exclude: ["password"] },
       distinct: true,
       order: [["createdAt", "DESC"]],
@@ -466,12 +469,14 @@ exports.getAllPatients = async (req, res) => {
           include: [
             {
               model: DoctorFeedback,
+              as: "feedbackJoin", // ✅ Fix: Correct alias used here
               required: isDoctor,
               where: isDoctor ? { idDoctor: doctorId } : undefined,
               attributes: [],
               include: [
                 {
                   model: Doctor,
+                     as   : "doctor",   
                   attributes: ["id", "fullName"],
                 },
               ],
@@ -480,7 +485,7 @@ exports.getAllPatients = async (req, res) => {
         },
         {
           model: db.Analysis,
-          attributes: ["analysisName", "image"],
+          attributes: ["analysisName", "pdfPath"],
         },
       ],
     });
@@ -491,3 +496,4 @@ exports.getAllPatients = async (req, res) => {
     res.status(500).json({ message: "Something went wrong" });
   }
 };
+

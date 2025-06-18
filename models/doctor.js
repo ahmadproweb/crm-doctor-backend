@@ -9,19 +9,6 @@ module.exports = (sequelize, DataTypes) => {
     image: DataTypes.STRING,
     scheduleDate: DataTypes.DATEONLY,
     scheduleTime: DataTypes.TIME,
-    idFeedback: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      references: {
-        model: 'Feedbacks',
-        key: 'id'
-      }
-    }
   });
-
-  Doctor.associate = (models) => {
-    Doctor.belongsTo(models.Feedback, { foreignKey: 'idFeedback' });
-  };
-
   return Doctor;
 };

@@ -26,7 +26,7 @@ router.delete(
 router.get("/check-session", checkSession);
 
 router.post(
-    "/:idPatient/analysis", upload.single("image"), eitherAdminOrDoctorAuth ,
+    "/:idPatient/analysis", upload.single("file"), eitherAdminOrDoctorAuth ,
     createOrUpdateAnalysis
 );
 

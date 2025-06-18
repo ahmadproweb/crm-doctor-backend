@@ -17,6 +17,7 @@ exports.giveFeedback = async (req, res) => {
     const existing = await DoctorFeedback.findOne({
       include: [{
         model: Feedback,
+        as: "feedback", // ✅ Use alias here
         where: { idPatient }
       }],
       where: { idDoctor }
@@ -26,17 +27,23 @@ exports.giveFeedback = async (req, res) => {
       return res.status(409).json({ message: "Feedback already given" });
     }
 
-
     const feedback = await Feedback.create({ message, stars, idPatient });
-await DoctorFeedback.create({ idDoctor, idFeedback: feedback.id });
 
-await Doctor.update({ idFeedback: feedback.id }, { where: { id: idDoctor } });
+    await DoctorFeedback.create({
+      idDoctor,
+      idFeedback: feedback.id
+    });
 
-
-    res.status(201).json({ message: "Feedback submitted", feedback });
+    res.status(201).json({
+      message: "Feedback submitted successfully",
+      feedback
+    });
 
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Server error", error: err.message });
+    res.status(500).json({
+      message: "Server error",
+      error: err.message
+    });
   }
 };

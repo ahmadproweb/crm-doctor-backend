@@ -1,4 +1,5 @@
 "use strict";
+
 module.exports = {
   up: async (queryInterface, Sequelize) => {
     await queryInterface.createTable("Analysis", {
@@ -15,13 +16,13 @@ module.exports = {
         type: Sequelize.INTEGER,
         allowNull: false,
         references: {
-          model: "Patient",
+          model: "Patient", // 👈 Table name must match exactly
           key: "id",
         },
         onUpdate: "CASCADE",
         onDelete: "CASCADE",
       },
-      image: {
+      pdfPath: { // 👈 Changed from image → pdfPath
         type: Sequelize.STRING,
         allowNull: false,
       },

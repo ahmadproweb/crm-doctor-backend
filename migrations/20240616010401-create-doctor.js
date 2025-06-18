@@ -12,17 +12,6 @@ module.exports = {
       image: Sequelize.STRING,
       scheduleDate: Sequelize.DATEONLY,
       scheduleTime: Sequelize.TIME,
-      idFeedback: {
-        type: Sequelize.INTEGER,
-        allowNull: true,
-        references: {
-          model: "Feedbacks",
-          key: "id",
-        },
-        onUpdate: "CASCADE",
-        onDelete: "SET NULL",
-      },
-
       createdAt: {
         allowNull: false,
         type: Sequelize.DATE,
