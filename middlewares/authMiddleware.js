@@ -34,7 +34,7 @@ exports.protect = async (req, res, next) => {
         // ⇢ Analyses performed for this patient
         {
           model: Analysis,
-          attributes: ["id", "analysisName", "image"],
+          attributes: ["id", "analysisName", "pdfPath"],
         },
         // ⇢ Their appointments with nested doctor, service & medical record
         {

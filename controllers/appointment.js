@@ -1,9 +1,11 @@
+const db = require("../models");
 const { Appointment, MedicalRecord, Doctor, Service } = require("../models");
+const { Patient } = require("../models");
 
 exports.bookAppointment = async (req, res) => {
   try {
     const { idDoctor, idService, date, time, payment } = req.body;
-    const idPatient   = req.patient.id;  
+    const idPatient = req.patient.id;
     const patientName = req.patient.fullName;
 
     const doctor = await Doctor.findByPk(idDoctor);
@@ -32,16 +34,14 @@ exports.bookAppointment = async (req, res) => {
 };
 exports.updateMedicalRecord = async (req, res) => {
   try {
-    const { appointmentId }              = req.params;
-    const { diagnosis, doctorNotes,
-            medications, markComplete }   = req.body;
+    const { appointmentId } = req.params;
+    const { diagnosis, doctorNotes, medications, markComplete } = req.body;
 
     /* ── 1. fetch appointment + existing medical record ────────────── */
     const appt = await Appointment.findByPk(appointmentId, {
-      include: [{ model: MedicalRecord }]   // alias not needed, default is MedicalRecord
+      include: [{ model: MedicalRecord }], // alias not needed, default is MedicalRecord
     });
-    if (!appt)
-      return res.status(404).json({ error: "Appointment not found" });
+    if (!appt) return res.status(404).json({ error: "Appointment not found" });
 
     /* ── 2. upsert medical record ──────────────────────────────────── */
     if (appt.MedicalRecord) {
@@ -71,7 +71,6 @@ exports.updateMedicalRecord = async (req, res) => {
   }
 };
 
-
 exports.cancelAppointment = async (req, res) => {
   try {
     const { appointmentId } = req.params;
@@ -97,31 +96,51 @@ exports.getDoctorAppointments = async (req, res) => {
     const appointments = await Appointment.findAll({
       where: { idDoctor },
       include: [
-        { model: User, attributes: ["fullName", "email", "phone"] },
-        { model: Doctor, attributes: ["name", "image", "fees"] },
+        { model: Patient, attributes: ["fullName", "email", "phone", "image"] },
+        {
+          model: Doctor,
+          attributes: ["fullName", "image"],
+          include: [
+            // 👈 nested include
+            {
+              association: db.Doctor.associations.services,
+              attributes: ["name", "fee"],
+            },
+          ],
+        },
+        // this one will work when idService is present
+        { model: Service, attributes: ["name", "fee"] },
       ],
-      order: [["date", "ASC"]],
+      order: [
+        ["date", "DESC"],
+        ["time", "DESC"],
+      ],
     });
 
-    res.status(200).json({ success: true, data: appointments });
-  } catch (error) {
-    console.error("Doctor appointment fetch error:", error);
+    res.json({ success: true, data: appointments });
+  } catch (err) {
+    console.error("Doctor appointment fetch error:", err);
     res.status(500).json({ error: "Failed to fetch doctor appointments" });
   }
 };
 
-exports.getAllAppointments = async (req, res) => {
+exports.getAllAppointments = async (_req, res) => {
   try {
     const appointments = await Appointment.findAll({
       include: [
-        { model: User, attributes: ["fullName", "email"] },
-        { model: Doctor, attributes: ["name", "image", "fees"] },
+        { model: Patient, attributes: ["fullName", "email", "image"] },
+        { model: Service, attributes: ["name", "fee"] },
+        { model: Doctor, attributes: ["fullName", "image"] },
+      ],
+      order: [
+        ["date", "DESC"],
+        ["time", "DESC"],
       ],
     });
 
-    res.status(200).json({ success: true, data: appointments });
-  } catch (error) {
-    console.error("Fetch appointments error:", error);
+    res.json({ success: true, data: appointments });
+  } catch (err) {
+    console.error("Fetch appointments error:", err);
     res.status(500).json({ error: "Failed to fetch appointments" });
   }
 };

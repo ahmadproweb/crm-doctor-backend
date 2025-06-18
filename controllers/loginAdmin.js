@@ -211,6 +211,7 @@ exports.updateDoctor = async (req, res) => {
         about: about ?? doctor.about,
         scheduleDate: scheduleDate ?? doctor.scheduleDate,
         scheduleTime: scheduleTime ?? doctor.scheduleTime,
+            image: doctor.image
       },
       { transaction: t }
     );
@@ -340,46 +341,61 @@ exports.getAllDoctors = async (_req, res) => {
   try {
     const doctors = await Doctor.findAll({
       attributes: {
-        exclude: ["password"],
+        exclude: ['password'],
         include: [
           [
             Sequelize.fn(
-              "COALESCE",
-              Sequelize.fn("AVG", Sequelize.col("Feedbacks.stars")),
+              'COALESCE',
+              Sequelize.fn('AVG', Sequelize.col('Feedbacks.stars')),
               0
             ),
-            "avgRating",
+            'avgRating',
           ],
         ],
       },
 
       include: [
-        // services via M:N relation
+        /* ─────────────── Services (unchanged) ─────────────── */
         {
           model: Service,
-          as: "services",
-          attributes: ["id", "name", "fee"],
-          through: { attributes: [] }, // hide join table
+          as: 'services',
+          attributes: ['id', 'name', 'fee'],
+          through: { attributes: [] },
         },
-        // feedbacks
+
+        /* ─────────────── Feedbacks + Patient ─────────────── */
         {
           model: Feedback,
-          attributes: ["id", "message", "stars"],
+          attributes: ['id', 'message', 'stars'],
           through: { attributes: [] },
+          include: [
+            {
+              model: Patient,
+              as: 'Patient',          // ⭐ make sure alias matches association
+              attributes: ['id', 'fullName', 'image'], // show only safe fields
+            },
+          ],
         },
       ],
 
-      group: ["Doctor.id", "services.id", "Feedbacks.id"],
+      /* IMPORTANT: add patient to GROUP BY */
+      group: [
+        'Doctor.id',
+        'services.id',
+        'Feedbacks.id',
+        'Feedbacks->Patient.id',   // 👈 nested path syntax
+      ],
 
-      order: [[Sequelize.literal('"avgRating"'), "DESC"]],
+      order: [[Sequelize.literal('"avgRating"'), 'DESC']],
     });
 
     res.json({ doctors });
   } catch (err) {
-    console.error("getAllDoctors error:", err);
-    res.status(500).json({ message: "Failed to fetch doctors" });
+    console.error('getAllDoctors error:', err);
+    res.status(500).json({ message: 'Failed to fetch doctors' });
   }
 };
+
 
 exports.loginDoctor = async (req, res) => {
   // console.log(req.body);
