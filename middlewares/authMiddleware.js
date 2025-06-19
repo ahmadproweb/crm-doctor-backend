@@ -17,7 +17,6 @@ exports.protect = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log("Decoded token:", decoded);
 
     // 🗄️  Pull patient + analysis + appointments (+ medical record)
     const patient = await Patient.findByPk(decoded.id, {
@@ -34,7 +33,7 @@ exports.protect = async (req, res, next) => {
         // ⇢ Analyses performed for this patient
         {
           model: Analysis,
-          attributes: ["id", "analysisName", "pdfPath"],
+          attributes: ["id", "analysisName", "pdfPath", "createdAt" , "updatedAt"],
         },
         // ⇢ Their appointments with nested doctor, service & medical record
         {
@@ -47,7 +46,7 @@ exports.protect = async (req, res, next) => {
             },
             {
               model: Doctor,
-              attributes: ["id", "fullName", "speciality"],
+              attributes: ["id", "fullName", "speciality", "image"],
             },
             {
               model: MedicalRecord,

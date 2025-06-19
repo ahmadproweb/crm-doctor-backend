@@ -1,6 +1,6 @@
 const db = require("../models");
 const jwt = require("jsonwebtoken");
-const { Patient , Appointment } = db;
+const { Patient, Appointment } = db;
 const bcrypt = require("bcrypt");
 const { Sequelize } = require("../models");
 
@@ -44,6 +44,56 @@ exports.loginAdmin = async (req, res) => {
   const token = generateTokenAdmin(admin);
   res.status(200).json({ token, admin: { id: admin.id, email: admin.email } });
 };
+function removeImage(fullUrl) {
+  if (!fullUrl) return;
+
+  try {
+    const fileName = path.basename(fullUrl);
+    const filePath = path.join(__dirname, "..", "uploads", fileName);
+
+    console.log("🗑 Deleting image:", filePath);
+
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log("✅ Image deleted:", fileName);
+    } else {
+      console.warn("⚠️ Image not found on disk:", fileName);
+    }
+  } catch (e) {
+    console.error("removeImage error:", e.message);
+  }
+}
+function parseJsonArray(input) {
+  if (!input) return [];
+
+  const raw = Array.isArray(input) ? input : [input];
+  const result = [];
+
+  for (const item of raw) {
+    if (!item) continue;
+    try {
+      const parsed = typeof item === "string" ? JSON.parse(item) : item;
+      if (Array.isArray(parsed)) {
+        result.push(...parsed);
+      } else if (typeof parsed === "string" && parsed.includes(",")) {
+        result.push(...parsed.split(","));
+      } else {
+        result.push(parsed);
+      }
+    } catch {
+      // fallback for comma-separated
+      if (typeof item === "string" && item.includes(",")) {
+        result.push(...item.split(","));
+      } else {
+        result.push(item);
+      }
+    }
+  }
+
+  return result;
+}
+
+
 
 exports.createDoctor = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -79,24 +129,19 @@ exports.createDoctor = async (req, res) => {
       const baseUrl = `${req.protocol}://${req.get("host")}`;
       imagePath = `${baseUrl}/uploads/${req.file.filename}`;
     }
-const parsedDate =
-  scheduleDate && scheduleDate !== "Invalid date" ? scheduleDate : null;
-const parsedTime =
-  scheduleTime && scheduleTime !== "Invalid date" ? scheduleTime : null;
-    const doctor = await Doctor.create(
-      {
-        fullName,
-        email,
-        password: hash,
-        speciality,
-        experience,
-        about,
-        image: imagePath,
-        scheduleDate: parsedDate,
-    scheduleTime: parsedTime,
-      },
-      { transaction: t }
-    );
+   const doctor = await Doctor.create({
+  fullName,
+  email,
+  password: hash,
+  speciality,
+  experience,
+  about,
+  scheduleDate: scheduleDate ? parseJsonArray(scheduleDate) : [],
+  scheduleTime: scheduleTime ? parseJsonArray(scheduleTime) : [],
+  image: imagePath,
+}, { transaction: t });
+
+
 
     let createdServices = [];
     if (services) {
@@ -146,27 +191,6 @@ const parsedTime =
     });
   }
 };
-
-function removeImage(fullUrl) {
-  if (!fullUrl) return;
-
-  try {
-    const fileName = path.basename(fullUrl);
-    const filePath = path.join(__dirname, "..", "uploads", fileName);
-
-    console.log("🗑 Deleting image:", filePath);
-
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-      console.log("✅ Image deleted:", fileName);
-    } else {
-      console.warn("⚠️ Image not found on disk:", fileName);
-    }
-  } catch (e) {
-    console.error("removeImage error:", e.message);
-  }
-}
-
 exports.updateDoctor = async (req, res) => {
   const t = await db.sequelize.transaction();
   try {
@@ -209,12 +233,17 @@ exports.updateDoctor = async (req, res) => {
         speciality: speciality ?? doctor.speciality,
         experience: experience ?? doctor.experience,
         about: about ?? doctor.about,
-        scheduleDate: scheduleDate ?? doctor.scheduleDate,
-        scheduleTime: scheduleTime ?? doctor.scheduleTime,
-            image: doctor.image
+        scheduleDate: scheduleDate
+          ? parseJsonArray(scheduleDate)
+          : doctor.scheduleDate,
+        scheduleTime: scheduleTime
+          ? parseJsonArray(scheduleTime)
+          : doctor.scheduleTime,
+        image: doctor.image,
       },
       { transaction: t }
     );
+
 
     let updatedServices = [];
     if (services) {
@@ -492,7 +521,7 @@ exports.getAllPatients = async (req, res) => {
               include: [
                 {
                   model: Doctor,
-                     as   : "doctor",   
+                  as: "doctor",
                   attributes: ["id", "fullName"],
                 },
               ],
